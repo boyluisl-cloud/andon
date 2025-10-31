@@ -1,0 +1,390 @@
+import React, { useState, useEffect } from 'react';
+import { Headphones, User, AlertTriangle, CheckCircle, XCircle, Download, LogOut, Clock } from 'lucide-react';
+
+export default function AndonPortal() {
+  const [equipos, setEquipos] = useState({});
+  const [selectedEquipo, setSelectedEquipo] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  const [modalType, setModalType] = useState(''); // 'register' or 'exit'
+  const [userName, setUserName] = useState('');
+  const [reporteProblema, setReporteProblema] = useState('');
+  const [loading, setLoading] = useState(true);
+
+  // Cargar datos al iniciar
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const loadData = async () => {
+    try {
+      const result = await window.storage.get('andon-equipos');
+      if (result) {
+        setEquipos(JSON.parse(result.value));
+      }
+    } catch (error) {
+      console.log('No hay datos previos, iniciando nuevo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const saveData = async (newEquipos) => {
+    try {
+      await window.storage.set('andon-equipos', JSON.stringify(newEquipos));
+    } catch (error) {
+      console.error('Error al guardar:', error);
+    }
+  };
+
+  const openModal = (equipoNum, type) => {
+    setSelectedEquipo(equipoNum);
+    setModalType(type);
+    setShowModal(true);
+    setUserName('');
+    setReporteProblema('');
+  };
+
+  const registrarEntrada = (estado) => {
+    if (!userName.trim()) {
+      alert('Por favor ingresa tu nombre');
+      return;
+    }
+
+    const now = new Date();
+    const newEquipos = {
+      ...equipos,
+      [selectedEquipo]: {
+        numero: selectedEquipo,
+        usuario: userName,
+        estado: estado,
+        problema: estado === 'amarillo' ? reporteProblema : '',
+        horaEntrada: now.toISOString(),
+        horaSalida: null
+      }
+    };
+
+    setEquipos(newEquipos);
+    saveData(newEquipos);
+    setShowModal(false);
+  };
+
+  const registrarSalida = () => {
+    const equipo = equipos[selectedEquipo];
+    if (!equipo) return;
+
+    const now = new Date();
+    const newEquipos = {
+      ...equipos,
+      [selectedEquipo]: {
+        ...equipo,
+        horaSalida: now.toISOString()
+      }
+    };
+
+    // Guardar en histórico
+    saveToHistory(equipo, now);
+    
+    // Limpiar equipo
+    delete newEquipos[selectedEquipo];
+    setEquipos(newEquipos);
+    saveData(newEquipos);
+    setShowModal(false);
+  };
+
+  const saveToHistory = async (equipo, salida) => {
+    try {
+      const historyKey = `andon-history-${new Date().toISOString().split('T')[0]}`;
+      let history = [];
+      
+      try {
+        const result = await window.storage.get(historyKey);
+        if (result) {
+          history = JSON.parse(result.value);
+        }
+      } catch (e) {
+        // No hay histórico previo
+      }
+
+      history.push({
+        ...equipo,
+        horaSalida: salida.toISOString()
+      });
+
+      await window.storage.set(historyKey, JSON.stringify(history));
+    } catch (error) {
+      console.error('Error al guardar histórico:', error);
+    }
+  };
+
+  const exportarExcel = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const historyKey = `andon-history-${today}`;
+      
+      let data = [];
+      
+      // Datos del histórico del día
+      try {
+        const result = await window.storage.get(historyKey);
+        if (result) {
+          data = JSON.parse(result.value);
+        }
+      } catch (e) {
+        console.log('No hay histórico del día');
+      }
+
+      // Agregar equipos activos
+      Object.values(equipos).forEach(eq => {
+        data.push({...eq, horaSalida: 'En uso'});
+      });
+
+      if (data.length === 0) {
+        alert('No hay datos para exportar hoy');
+        return;
+      }
+
+      // Crear CSV
+      let csv = 'Equipo,Usuario,Estado,Problema,Hora Entrada,Hora Salida,Duración (hrs)\n';
+      
+      data.forEach(item => {
+        const entrada = new Date(item.horaEntrada);
+        const salida = item.horaSalida === 'En uso' ? new Date() : new Date(item.horaSalida);
+        const duracion = ((salida - entrada) / (1000 * 60 * 60)).toFixed(2);
+        
+        csv += `${item.numero},${item.usuario},${item.estado},${item.problema || 'N/A'},${entrada.toLocaleString('es-MX')},${item.horaSalida === 'En uso' ? 'En uso' : salida.toLocaleString('es-MX')},${duracion}\n`;
+      });
+
+      // Descargar
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = `Reporte_ANDON_${today}.csv`;
+      link.click();
+    } catch (error) {
+      console.error('Error al exportar:', error);
+      alert('Error al generar el reporte');
+    }
+  };
+
+  const getEstadoColor = (estado) => {
+    switch(estado) {
+      case 'verde': return 'bg-green-500';
+      case 'amarillo': return 'bg-yellow-500';
+      case 'rojo': return 'bg-red-500';
+      default: return 'bg-green-500';
+    }
+  };
+
+  const getEstadoTexto = (estado) => {
+    switch(estado) {
+      case 'verde': return 'FUNCIONANDO';
+      case 'amarillo': return 'NECESITA REVISIÓN';
+      case 'rojo': return 'NO FUNCIONAL';
+      default: return 'DISPONIBLE';
+    }
+  };
+
+  if (loading) {
+    return <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="text-white text-2xl">Cargando...</div>
+    </div>;
+  }
+
+  return (
+    <div className="min-h-screen bg-black text-white p-4 md:p-8">
+      {/* Header */}
+      <div className="max-w-7xl mx-auto mb-8">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <Headphones className="w-12 h-12 text-blue-400" />
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold">SISTEMA ANDON</h1>
+              <p className="text-gray-400">equipos de VOZ - Cedis Puebla</p>
+            </div>
+          </div>
+          <button
+            onClick={exportarExcel}
+            className="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors"
+          >
+            <Download className="w-5 h-5" />
+            <span className="hidden md:inline">Exportar Reporte</span>
+          </button>
+        </div>
+
+        {/* Resumen de Estados */}
+        <div className="grid grid-cols-3 gap-4 mb-8">
+          <div className="bg-green-500 bg-opacity-20 border-2 border-green-500 rounded-lg p-6 text-center">
+            <div className="text-4xl md:text-5xl font-bold text-green-400 mb-2">
+              {Object.values(equipos).filter(e => e.estado === 'verde').length}
+            </div>
+            <div className="text-sm md:text-base text-green-300">FUNCIONANDO</div>
+          </div>
+          <div className="bg-yellow-500 bg-opacity-20 border-2 border-yellow-500 rounded-lg p-6 text-center">
+            <div className="text-4xl md:text-5xl font-bold text-yellow-400 mb-2">
+              {Object.values(equipos).filter(e => e.estado === 'amarillo').length}
+            </div>
+            <div className="text-sm md:text-base text-yellow-300">NECESITA REVISIÓN</div>
+          </div>
+          <div className="bg-red-500 bg-opacity-20 border-2 border-red-500 rounded-lg p-6 text-center">
+            <div className="text-4xl md:text-5xl font-bold text-red-400 mb-2">
+              {Object.values(equipos).filter(e => e.estado === 'rojo').length}
+            </div>
+            <div className="text-sm md:text-base text-red-300">NO FUNCIONAL</div>
+          </div>
+        </div>
+
+        {/* Leyenda */}
+        <div className="flex flex-wrap gap-4 justify-center mb-8 bg-gray-900 p-4 rounded-lg">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-green-500 rounded"></div>
+            <span className="text-sm">FUNCIONANDO</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-yellow-500 rounded"></div>
+            <span className="text-sm">FUNCIONAL PERO NECESARIO REVISARLO</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 bg-red-500 rounded"></div>
+            <span className="text-sm">NO FUNCIONAL</span>
+          </div>
+        </div>
+
+        {/* Grid de Equipos */}
+        <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2 md:gap-3">
+          {Array.from({ length: 43 }, (_, i) => i + 1).map((num) => {
+            const equipo = equipos[num];
+            const isOccupied = !!equipo;
+            const bgColor = isOccupied ? getEstadoColor(equipo.estado) : 'bg-gray-700';
+            
+            return (
+              <button
+                key={num}
+                onClick={() => openModal(num, isOccupied ? 'exit' : 'register')}
+                className={`${bgColor} hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold text-xl md:text-2xl transition-all transform hover:scale-105 relative group`}
+              >
+                <span className="text-3xl md:text-4xl">{num}</span>
+                {isOccupied && (
+                  <>
+                    <span className="text-xs mt-1 truncate max-w-full px-1">{equipo.usuario}</span>
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                      <LogOut className="w-8 h-8" />
+                    </div>
+                  </>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+          <div className="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            {modalType === 'register' ? (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Registrar Equipo {selectedEquipo}</h2>
+                
+                <div className="mb-4">
+                  <label className="block text-sm mb-2">Nombre del Usuario</label>
+                  <input
+                    type="text"
+                    value={userName}
+                    onChange={(e) => setUserName(e.target.value)}
+                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                    placeholder="Ingresa tu nombre"
+                  />
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-sm mb-2">Estado del Equipo</label>
+                  <div className="space-y-2">
+                    <button
+                      onClick={() => registrarEntrada('verde')}
+                      className="w-full bg-green-500 hover:bg-green-600 py-3 rounded flex items-center justify-center gap-2"
+                    >
+                      <CheckCircle className="w-5 h-5" />
+                      Funcionando 100%
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!userName.trim()) {
+                          alert('Por favor ingresa tu nombre primero');
+                          return;
+                        }
+                        document.getElementById('reporteSection').classList.remove('hidden');
+                      }}
+                      className="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded flex items-center justify-center gap-2"
+                    >
+                      <AlertTriangle className="w-5 h-5" />
+                      Tiene Fallas
+                    </button>
+                    <button
+                      onClick={() => registrarEntrada('rojo')}
+                      className="w-full bg-red-500 hover:bg-red-600 py-3 rounded flex items-center justify-center gap-2"
+                    >
+                      <XCircle className="w-5 h-5" />
+                      No Funciona
+                    </button>
+                  </div>
+                </div>
+
+                <div id="reporteSection" className="hidden mb-4">
+                  <label className="block text-sm mb-2">Describe el problema</label>
+                  <textarea
+                    value={reporteProblema}
+                    onChange={(e) => setReporteProblema(e.target.value)}
+                    className="w-full bg-gray-700 rounded px-3 py-2 text-white"
+                    rows="3"
+                    placeholder="Ej: Micrófono con ruido, volumen bajo, etc."
+                  />
+                  <button
+                    onClick={() => registrarEntrada('amarillo')}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 py-2 rounded mt-2"
+                  >
+                    Confirmar Reporte
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded"
+                >
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-bold mb-4">Registrar Salida</h2>
+                <div className="bg-gray-700 p-4 rounded mb-4">
+                  <p className="mb-2"><strong>Equipo:</strong> {selectedEquipo}</p>
+                  <p className="mb-2"><strong>Usuario:</strong> {equipos[selectedEquipo]?.usuario}</p>
+                  <p className="mb-2"><strong>Estado:</strong> {getEstadoTexto(equipos[selectedEquipo]?.estado)}</p>
+                  <p className="text-sm text-gray-400">
+                    <Clock className="w-4 h-4 inline mr-1" />
+                    Entrada: {new Date(equipos[selectedEquipo]?.horaEntrada).toLocaleString('es-MX')}
+                  </p>
+                </div>
+
+                <button
+                  onClick={registrarSalida}
+                  className="w-full bg-blue-500 hover:bg-blue-600 py-3 rounded mb-2 flex items-center justify-center gap-2"
+                >
+                  <LogOut className="w-5 h-5" />
+                  Confirmar Salida
+                </button>
+
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded"
+                >
+                  Cancelar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

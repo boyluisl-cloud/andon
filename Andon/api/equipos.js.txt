@@ -1,0 +1,23 @@
+// Obtener todos los equipos
+export default async function handler(req, res) {
+  // Habilitar CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  if (req.method === 'GET') {
+    try {
+      // Usar Vercel KV o base de datos externa
+      // Por ahora retornamos datos vacíos
+      return res.status(200).json([]);
+    } catch (error) {
+      return res.status(500).json({ error: 'Error al obtener equipos' });
+    }
+  }
+
+  return res.status(405).json({ error: 'Método no permitido' });
+}

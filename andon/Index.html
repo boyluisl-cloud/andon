@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema ANDON - CEDIS Puebla</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.min.js"></script>
+</head>
+<body class="bg-black text-white">
+    <div class="min-h-screen p-4 md:p-8">
+        <!-- Header -->
+        <div class="max-w-7xl mx-auto mb-8">
+            <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="text-5xl">🎧</div>
+                    <div>
+                        <h1 class="text-3xl md:text-4xl font-bold">SISTEMA ANDON</h1>
+                        <p class="text-gray-400">equipos de VOZ - Cedis Puebla</p>
+                        <p id="status-indicator" class="text-xs text-gray-400 mt-1">
+                            <span id="status-icon">🔴</span> 
+                            <span id="status-text">Inicializando...</span>
+                        </p>
+                    </div>
+                </div>
+                <button onclick="exportarExcel()" class="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
+                    <span>📥</span>
+                    <span>Exportar Reporte</span>
+                </button>
+            </div>
+
+            <!-- Resumen de Estados -->
+            <div class="grid grid-cols-3 gap-4 mb-8">
+                <div class="bg-green-500 bg-opacity-20 border-2 border-green-500 rounded-lg p-6 text-center">
+                    <div id="count-verde" class="text-4xl md:text-5xl font-bold text-green-400 mb-2">0</div>
+                    <div class="text-sm md:text-base text-green-300">FUNCIONANDO</div>
+                </div>
+                <div class="bg-yellow-500 bg-opacity-20 border-2 border-yellow-500 rounded-lg p-6 text-center">
+                    <div id="count-amarillo" class="text-4xl md:text-5xl font-bold text-yellow-400 mb-2">0</div>
+                    <div class="text-sm md:text-base text-yellow-300">NECESITA REVISIÓN</div>
+                </div>
+                <div class="bg-red-500 bg-opacity-20 border-2 border-red-500 rounded-lg p-6 text-center">
+                    <div id="count-rojo" class="text-4xl md:text-5xl font-bold text-red-400 mb-2">0</div>
+                    <div class="text-sm md:text-base text-red-300">NO FUNCIONAL</div>
+                </div>
+            </div>
+
+            <!-- Leyenda -->
+            <div class="flex flex-wrap gap-4 justify-center mb-8 bg-gray-900 p-4 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-green-500 rounded"></div>
+                    <span class="text-sm">FUNCIONANDO</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-yellow-500 rounded"></div>
+                    <span class="text-sm">NECESITA REVISIÓN</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-red-500 rounded"></div>
+                    <span class="text-sm">NO FUNCIONAL</span>
+                </div>
+            </div>
+
+            <!-- Grid de Equipos -->
+            <div id="equipos-grid" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2 md:gap-3"></div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full max-h-screen overflow-y-auto">
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // CONFIGURACIÓN DE SUPABASE
+        // ========================================
+        // REEMPLAZA ESTAS VARIABLES CON TUS CREDENCIALES
+        const SUPABASE_URL = 'TU_SUPABASE_URL_AQUI';
+        const SUPABASE_KEY = 'TU_SUPABASE_ANON_KEY_AQUI';
+
+        let supabase = null;
+        let equipos = {};
+        let selectedEquipo = null;
+        let realtimeChannel = null;
+
+        // Actualizar estado de conexión
+        function actualizarEstado(icono, texto, color) {
+            document.getElementById('status-icon').textContent = icono;
+            document.getElementById('status-text').textContent = texto;
+            document.getElementById('status-text').className = `text-xs ${color}`;
+        }
+
+        // Inicializar aplicación
+        document.addEventListener('DOMContentLoaded', async () => {
+            generarGrid();
+            
+            // Verificar configuración
+            if (SUPABASE_URL === 'TU_SUPABASE_URL_AQUI' || SUPABASE_KEY === 'TU_SUPABASE_ANON_KEY_AQUI') {
+                actualizarEstado('⚠️', 'Sin configurar - Ver consola', 'text-yellow-400');
+                console.error('===============================================');
+                console.error('⚠️  CONFIGURACIÓN REQUERIDA');
+                console.error('===============================================');
+                console.error('Por favor configura Supabase:');
+                console.error('1. Ve a: https://supabase.com');
+                console.error('2. Crea un proyecto');
+                console.error('3. Copia URL y KEY');
+                console.error('4. Reemplaza en líneas 85-86 del código');
+                console.error('===============================================');
+                return;
+            }
+
+            try {
+                // Inicializar Supabase
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                actualizarEstado('🟡', 'Conectando...', 'text-yellow-400');
+                
+                // Probar conexión
+                const { data, error } = await supabase.from('equipos').select('count').limit(1);
+                
+                if (error) {
+                    throw new Error('Error de conexión: ' + error.message);
+                }
+                
+                actualizarEstado('🟢', 'Conectado', 'text-green-400');
+                
+                await cargarEquipos();
+                suscribirCambios();
+                
+                console.log('✅ Sistema ANDON iniciado correctamente');
+            } catch (error) {
+                console.error('❌ Error al inicializar:', error);
+                actualizarEstado('🔴', 'Error de conexión', 'text-red-400');
+                mostrarNotificacion('Error al conectar con la base de datos. Verifica tu configuración.', 'error');
+            }
+        });
+
+        // Generar grid de 43 equipos
+        function generarGrid() {
+            const grid = document.getElementById('equipos-grid');
+            grid.innerHTML = '';
+            
+            for (let i = 1; i <= 43; i++) {
+                const btn = document.createElement('button');
+                btn.id = `equipo-${i}`;
+                btn.onclick = () => abrirModal(i);
+                btn.className = 'bg-gray-700 hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all transform hover:scale-105 relative group';
+                btn.innerHTML = `<span class="text-3xl md:text-4xl">${i}</span>`;
+                grid.appendChild(btn);
+            }
+        }
+
+        // Cargar equipos desde Supabase
+        async function cargarEquipos() {
+            if (!supabase) return;
+            
+            try {
+                const { data, error } = await supabase
+                    .from('equipos')
+                    .select('*')
+                    .order('numero', { ascending: true });
+
+                if (error) throw error;
+
+                equipos = {};
+                if (data) {
+                    data.forEach(eq => {
+                        equipos[eq.numero] = eq;
+                    });
+                }
+
+                actualizarUI();
+            } catch (error) {
+                console.error('Error al cargar equipos:', error);
+                mostrarNotificacion('Error al cargar datos', 'error');
+            }
+        }
+
+        // Suscribirse a cambios en tiempo real
+        function suscribirCambios() {
+            if (!supabase) return;
+            
+            // Cancelar suscripción anterior si existe
+            if (realtimeChannel) {
+                supabase.removeChannel(realtimeChannel);
+            }
+
+            // Nueva suscripción a cambios en tiempo real
+            realtimeChannel = supabase
+                .channel('equipos-realtime')
+                .on(
+                    'postgres_changes',
+                    { 
+                        event: '*', 
+                        schema: 'public', 
+                        table: 'equipos' 
+                    },
+                    (payload) => {
+                        console.log('🔄 Cambio detectado:', payload.eventType);
+                        cargarEquipos();
+                    }
+                )
+                .subscribe((status) => {
+                    if (status === 'SUBSCRIBED') {
+                        console.log('✅ Suscrito a cambios en tiempo real');
+                    }
+                });
+        }
+
+        // Actualizar interfaz
+        function actualizarUI() {
+            let countVerde = 0, countAmarillo = 0, countRojo = 0;
+
+            for (let i = 1; i <= 43; i++) {
+                const btn = document.getElementById(`equipo-${i}`);
+                const equipo = equipos[i];
+
+                if (equipo) {
+                    const colores = {
+                        'verde': 'bg-green-500',
+                        'amarillo': 'bg-yellow-500',
+                        'rojo': 'bg-red-500'
+                    };
+                    
+                    btn.className = `${colores[equipo.estado]} hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all transform hover:scale-105 relative group`;
+                    btn.innerHTML = `
+                        <span class="text-3xl md:text-4xl">${i}</span>
+                        <span class="text-xs mt-1 truncate max-w-full px-1">${equipo.usuario}</span>
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span class="text-2xl">👋</span>
+                        </div>
+                    `;
+
+                    if (equipo.estado === 'verde') countVerde++;
+                    if (equipo.estado === 'amarillo') countAmarillo++;
+                    if (equipo.estado === 'rojo') countRojo++;
+                } else {
+                    btn.className = 'bg-gray-700 hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all transform hover:scale-105';
+                    btn.innerHTML = `<span class="text-3xl md:text-4xl">${i}</span>`;
+                }
+            }
+
+            document.getElementById('count-verde').textContent = countVerde;
+            document.getElementById('count-amarillo').textContent = countAmarillo;
+            document.getElementById('count-rojo').textContent = countRojo;
+        }
+
+        // Abrir modal
+        function abrirModal(numero) {
+            if (!supabase) {
+                alert('⚠️ Sistema no configurado. Por favor configura Supabase.');
+                return;
+            }
+            
+            selectedEquipo = numero;
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modal-content');
+            const equipo = equipos[numero];
+
+            if (equipo) {
+                // Modal de salida
+                const entrada = new Date(equipo.hora_entrada);
+                const duracion = calcularDuracion(entrada, new Date());
+                
+                content.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-4">Registrar Salida</h2>
+                    <div class="bg-gray-700 p-4 rounded mb-4">
+                        <p class="mb-2"><strong>Equipo:</strong> ${numero}</p>
+                        <p class="mb-2"><strong>Usuario:</strong> ${equipo.usuario}</p>
+                        <p class="mb-2"><strong>Estado:</strong> <span class="px-2 py-1 rounded ${getColorBadge(equipo.estado)}">${getEstadoTexto(equipo.estado)}</span></p>
+                        ${equipo.problema ? `<p class="mb-2"><strong>Problema:</strong> ${equipo.problema}</p>` : ''}
+                        <p class="text-sm text-gray-400 mt-3">⏰ Entrada: ${formatFecha(entrada)}</p>
+                        <p class="text-sm text-gray-400">⏱️ Duración: ${duracion}</p>
+                    </div>
+                    <button onclick="registrarSalida()" class="w-full bg-blue-500 hover:bg-blue-600 py-3 rounded mb-2 font-semibold">
+                        ✓ Confirmar Salida
+                    </button>
+                    <button onclick="cerrarModal()" class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">
+                        Cancelar
+                    </button>
+                `;
+            } else {
+                // Modal de registro
+                content.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-4">Registrar Equipo ${numero}</h2>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm mb-2 font-semibold">Nombre del Usuario</label>
+                        <input type="text" id="userName" class="w-full bg-gray-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ingresa tu nombre" autocomplete="off">
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="block text-sm mb-3 font-semibold">Estado del Equipo</label>
+                        <div class="space-y-2">
+                            <button onclick="registrarEntrada('verde')" class="w-full bg-green-500 hover:bg-green-600 py-3 rounded flex items-center justify-center gap-2 font-semibold">
+                                <span>✓</span> Funcionando 100%
+                            </button>
+                            <button onclick="mostrarReporte()" class="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded flex items-center justify-center gap-2 font-semibold">
+                                <span>⚠</span> Tiene Fallas
+                            </button>
+                            <button onclick="registrarEntrada('rojo')" class="w-full bg-red-500 hover:bg-red-600 py-3 rounded flex items-center justify-center gap-2 font-semibold">
+                                <span>✕</span> No Funciona
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="reporteSection" class="hidden mb-4">
+                        <label class="block text-sm mb-2 font-semibold">Describe el problema</label>
+                        <textarea id="reporteProblema" class="w-full bg-gray-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-yellow-500 outline-none" rows="3" placeholder="Ej: Micrófono con ruido, volumen bajo, etc."></textarea>
+                        <button onclick="registrarEntrada('amarillo')" class="w-full bg-yellow-500 hover:bg-yellow-600 py-2 rounded mt-2 font-semibold">
+                            Confirmar Reporte
+                        </button>
+                    </div>
+
+                    <button onclick="cerrarModal()" class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">
+                        Cancelar
+                    </button>
+                `;
+                
+                // Focus en el input de nombre
+                setTimeout(() => document.getElementById('userName')?.focus(), 100);
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        // Mostrar sección de reporte
+        function mostrarReporte() {
+            const userName = document.getElementById('userName').value.trim();
+            if (!userName) {
+                alert('⚠️ Por favor ingresa tu nombre primero');
+                document.getElementById('userName').focus();
+                return;
+            }
+            document.getElementById('reporteSection').classList.remove('hidden');
+        }
+
+        // Registrar entrada
+        async function registrarEntrada(estado) {
+            if (!supabase) {
+                alert('⚠️ Sistema no configurado');
+                return;
+            }
+            
+            const userName = document.getElementById('userName').value.trim();
+            const problema = document.getElementById('reporteProblema')?.value.trim() || null;
+
+            if (!userName) {
+                alert('⚠️ Por favor ingresa tu nombre');
+                document.getElementById('userName').focus();
+                return;
+            }
+
+            try {
+                const { data, error } = await supabase
+                    .from('equipos')
+                    .upsert({
+                        numero: selectedEquipo,
+                        usuario: userName,
+                        estado: estado,
+                        problema: problema,
+                        hora_entrada: new Date().toISOString()
+                    }, {
+                        onConflict: 'numero'
+                    })
+                    .select();
+
+                if (error) throw error;
+
+                cerrarModal();
+                mostrarNotificacion(`✓ Equipo ${selectedEquipo} registrado correctamente`, 'success');
+            } catch (error) {
+                console.error('Error al registrar:', error);
+                mostrarNotificacion('Error al registrar entrada: ' + error.message, 'error');
+            }
+        }
+
+        // Registrar salida
+        async function registrarSalida() {
+            if (!supabase) {
+                alert('⚠️ Sistema no configurado');
+                return;
+            }
+            
+            const equipo = equipos[selectedEquipo];
+            if (!equipo) return;
+
+            try {
+                // Guardar en histórico
+                const { error: historicoError } = await supabase
+                    .from('historico')
+                    .insert({
+                        numero: equipo.numero,
+                        usuario: equipo.usuario,
+                        estado: equipo.estado,
+                        problema: equipo.problema,
+                        hora_entrada: equipo.hora_entrada,
+                        hora_salida: new Date().toISOString(),
+                        fecha: new Date().toISOString().split('T')[0]
+                    });
+
+                if (historicoError) throw historicoError;
+
+                // Eliminar de equipos activos
+                const { error: deleteError } = await supabase
+                    .from('equipos')
+                    .delete()
+                    .eq('numero', selectedEquipo);
+
+                if (deleteError) throw deleteError;
+
+                cerrarModal();
+                mostrarNotificacion(`✓ Salida registrada para equipo ${selectedEquipo}`, 'success');
+            } catch (error) {
+                console.error('Error al registrar salida:', error);
+                mostrarNotificacion('Error al registrar salida: ' + error.message, 'error');
+            }
+        }
+
+        // Cerrar modal
+        function cerrarModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        // Exportar a Excel (CSV)
+        async function exportarExcel() {
+            if (!supabase) {
+                alert('⚠️ Sistema no configurado');
+                return;
+            }
+            
+            try {
+                const hoy = new Date().toISOString().split('T')[0];
+                
+                // Obtener histórico del día
+                const { data: historicoData, error: historicoError } = await supabase
+                    .from('historico')
+                    .select('*')
+                    .eq('fecha', hoy)
+                    .order('hora_entrada', { ascending: true });
+
+                if (historicoError) throw historicoError;
+
+                // Obtener equipos activos
+                const { data: activosData, error: activosError } = await supabase
+                    .from('equipos')
+                    .select('*')
+                    .order('numero', { ascending: true });
+
+                if (activosError) throw activosError;
+
+                if ((!historicoData || historicoData.length === 0) && (!activosData || activosData.length === 0)) {
+                    alert('⚠️ No hay datos para exportar hoy');
+                    return;
+                }
+
+                let csv = 'Equipo,Usuario,Estado,Problema,Hora Entrada,Hora Salida,Duración (hrs)\n';
+
+                // Datos del histórico
+                if (historicoData) {
+                    historicoData.forEach(item => {
+                        const entrada = new Date(item.hora_entrada);
+                        const salida = new Date(item.hora_salida);
+                        const duracion = ((salida - entrada) / (1000 * 60 * 60)).toFixed(2);
+                        
+                        csv += `${item.numero},"${item.usuario}",${item.estado.toUpperCase()},"${item.problema || 'N/A'}",${formatFechaCSV(entrada)},${formatFechaCSV(salida)},${duracion}\n`;
+                    });
+                }
+
+                // Equipos activos
+                if (activosData) {
+                    activosData.forEach(item => {
+                        const entrada = new Date(item.hora_entrada);
+                        const ahora = new Date();
+                        const duracion = ((ahora - entrada) / (1000 * 60 * 60)).toFixed(2);
+                        
+                        csv += `${item.numero},"${item.usuario}",${item.estado.toUpperCase()},"${item.problema || 'N/A'}",${formatFechaCSV(entrada)},En uso,${duracion}\n`;
+                    });
+                }
+
+                // Descargar
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `Reporte_ANDON_${hoy}.csv`;
+                link.click();
+                
+                mostrarNotificacion('📥 Reporte descargado correctamente', 'success');
+            } catch (error) {
+                console.error('Error al exportar:', error);
+                mostrarNotificacion('Error al exportar reporte: ' + error.message, 'error');
+            }
+        }
+
+        // Funciones auxiliares
+        function getEstadoTexto(estado) {
+            const textos = {
+                'verde': 'FUNCIONANDO',
+                'amarillo': 'NECESITA REVISIÓN',
+                'rojo': 'NO FUNCIONAL'
+            };
+            return textos[estado] || 'DESCONOCIDO';
+        }
+
+        function getColorBadge(estado) {
+            const colores = {
+                'verde': 'bg-green-500',
+                'amarillo': 'bg-yellow-500',
+                'rojo': 'bg-red-500'
+            };
+            return colores[estado] || 'bg-gray-500';
+        }
+
+        function formatFecha(fecha) {
+            return new Date(fecha).toLocaleString('es-MX', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function formatFechaCSV(fecha) {
+            return new Date(fecha).toLocaleString('es-MX', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+
+        function calcularDuracion(inicio, fin) {
+            const diff = fin - inicio;
+            const horas = Math.floor(diff / (1000 * 60 * 60));
+            const minutos = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+            return `${horas}h ${minutos}m`;
+        }
+
+        function mostrarNotificacion(mensaje, tipo) {
+            const colores = {
+                'success': 'bg-green-500',
+                'error': 'bg-red-500',
+                'warning': 'bg-yellow-500'
+            };
+            
+            const notif = document.createElement('div');
+            notif.className = `fixed top-4 right-4 ${colores[tipo]} text-white px-6 py-3 rounded-lg shadow-lg z-50 animate-fade-in max-w-md`;
+            notif.textContent = mensaje;
+            document.body.appendChild(notif);
+            
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                notif.style.transition = 'opacity 0.3s';
+                setTimeout(() => notif.remove(), 300);
+            }, 3000);
+        }
+
+        // Cerrar modal al hacer clic fuera
+        document.getElementById('modal').addEventListener('click', (e) => {
+            if (e.target.id === 'modal') {
+                cerrarModal();
+            }
+        });
+
+        // Cerrar modal con tecla ESC
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                cerrarModal();
+            }
+        });
+    </script>
+
+    <style>
+        @keyframes fade-in {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fade-in 0.3s ease-out;
+        }
+    </style>
+</body>
+</html>

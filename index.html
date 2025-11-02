@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sistema ANDON para gestión de equipos de VOZ">
+    <title>Sistema ANDON - CEDIS Puebla</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase v9 - Versión más estable -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-black text-white min-h-screen">
+    <div class="p-4 md:p-8">
+        <div class="max-w-7xl mx-auto mb-8">
+            <!-- Header -->
+            <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="text-5xl">🎧</div>
+                    <div>
+                        <h1 class="text-3xl md:text-4xl font-bold">SISTEMA ANDON</h1>
+                        <p class="text-gray-400">equipos de VOZ - Cedis Puebla</p>
+                        <p id="status-indicator" class="text-xs mt-1">
+                            <span id="status-icon">🔴</span> 
+                            <span id="status-text" class="text-gray-400">Inicializando...</span>
+                        </p>
+                    </div>
+                </div>
+                <button onclick="exportarExcel()" class="flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded-lg transition-colors">
+                    <span>📥</span>
+                    <span>Exportar Reporte</span>
+                </button>
+            </div>
+
+            <!-- Resumen de Estados -->
+            <div class="grid grid-cols-3 gap-4 mb-8">
+                <div class="bg-green-500 bg-opacity-20 border-2 border-green-500 rounded-lg p-6 text-center">
+                    <div id="count-verde" class="text-4xl md:text-5xl font-bold text-green-400 mb-2">0</div>
+                    <div class="text-sm md:text-base text-green-300">FUNCIONANDO</div>
+                </div>
+                <div class="bg-yellow-500 bg-opacity-20 border-2 border-yellow-500 rounded-lg p-6 text-center">
+                    <div id="count-amarillo" class="text-4xl md:text-5xl font-bold text-yellow-400 mb-2">0</div>
+                    <div class="text-sm md:text-base text-yellow-300">NECESITA REVISIÓN</div>
+                </div>
+                <div class="bg-red-500 bg-opacity-20 border-2 border-red-500 rounded-lg p-6 text-center">
+                    <div id="count-rojo" class="text-4xl md:text-5xl font-bold text-red-400 mb-2">0</div>
+                    <div class="text-sm md:text-base text-red-300">NO FUNCIONAL</div>
+                </div>
+            </div>
+
+            <!-- Leyenda -->
+            <div class="flex flex-wrap gap-4 justify-center mb-8 bg-gray-900 p-4 rounded-lg">
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-green-500 rounded"></div>
+                    <span class="text-sm">FUNCIONANDO</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-yellow-500 rounded"></div>
+                    <span class="text-sm">NECESITA REVISIÓN</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 bg-red-500 rounded"></div>
+                    <span class="text-sm">NO FUNCIONAL</span>
+                </div>
+            </div>
+
+            <!-- Grid de Equipos -->
+            <div id="equipos-grid" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2 md:gap-3"></div>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full max-h-screen overflow-y-auto">
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // CONFIGURACIÓN DE FIREBASE
+        // ========================================
+ // Import the functions you need from the SDKs you need
+//import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCAnqSIL7p4LhDozFpgVZBqsfAcqZE-PS8",
+  authDomain: "andon-9429b.firebaseapp.com",
+  projectId: "andon-9429b",
+  storageBucket: "andon-9429b.firebasestorage.app",
+  messagingSenderId: "428661387809",
+  appId: "1:428661387809:web:eb73a6fbeb2d581e5ca960"
+};
+
+        let db = null;
+        let equipos = {};
+        let selectedEquipo = null;
+        let unsubscribeEquipos = null;
+
+        function actualizarEstado(icono, texto, color) {
+            document.getElementById('status-icon').textContent = icono;
+            document.getElementById('status-text').textContent = texto;
+            document.getElementById('status-text').className = `text-xs ${color}`;
+        }
+
+        async function inicializarFirebase() {
+            console.log('🔥 Iniciando Firebase...');
+            
+            // Verificar si Firebase está cargado
+            if (typeof firebase === 'undefined') {
+                console.error('❌ Firebase no está cargado');
+                actualizarEstado('🔴', 'Error: Firebase no cargado', 'text-red-400');
+                return false;
+            }
+
+            // Verificar configuración
+            if (firebaseConfig.apiKey === 'TU_API_KEY_AQUI') {
+                console.warn('⚠️ Firebase no configurado');
+                actualizarEstado('⚠️', 'Sin configurar Firebase', 'text-yellow-400');
+                mostrarNotificacion('⚠️ Configura Firebase en el código (líneas 80-86)', 'warning');
+                return false;
+            }
+
+            try {
+                // Inicializar Firebase
+                console.log('🔄 Conectando a Firebase...');
+                const app = firebase.initializeApp(firebaseConfig);
+                db = firebase.firestore();
+                
+                actualizarEstado('🟡', 'Conectando...', 'text-yellow-400');
+                
+                // Probar conexión con timeout
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Timeout')), 10000)
+                );
+                
+                const testPromise = db.collection('equipos').limit(1).get();
+                
+                await Promise.race([testPromise, timeoutPromise]);
+                
+                console.log('✅ Firebase conectado correctamente');
+                actualizarEstado('🟢', 'Conectado', 'text-green-400');
+                return true;
+                
+            } catch (error) {
+                console.error('❌ Error al conectar Firebase:', error);
+                
+                if (error.code === 'permission-denied') {
+                    actualizarEstado('🔴', 'Error: Permisos denegados', 'text-red-400');
+                    mostrarNotificacion('Error: Revisa las reglas de Firestore', 'error');
+                } else if (error.message === 'Timeout') {
+                    actualizarEstado('🔴', 'Error: Timeout de conexión', 'text-red-400');
+                    mostrarNotificacion('No se pudo conectar a Firebase. Verifica tu conexión.', 'error');
+                } else {
+                    actualizarEstado('🔴', 'Error de conexión', 'text-red-400');
+                    mostrarNotificacion('Error: ' + error.message, 'error');
+                }
+                return false;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('📱 Aplicación iniciada');
+            generarGrid();
+            
+            const conectado = await inicializarFirebase();
+            
+            if (conectado) {
+                suscribirCambios();
+            } else {
+                console.log('⚠️ Sistema funcionando sin Firebase (modo demo)');
+            }
+        });
+
+        function generarGrid() {
+            const grid = document.getElementById('equipos-grid');
+            for (let i = 1; i <= 43; i++) {
+                const btn = document.createElement('button');
+                btn.id = `equipo-${i}`;
+                btn.onclick = () => abrirModal(i);
+                btn.className = 'bg-gray-700 hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all transform hover:scale-105';
+                btn.innerHTML = `<span class="text-3xl md:text-4xl">${i}</span>`;
+                grid.appendChild(btn);
+            }
+        }
+
+        function suscribirCambios() {
+            if (!db) return;
+            
+            console.log('👂 Suscribiendo a cambios en tiempo real...');
+            
+            unsubscribeEquipos = db.collection('equipos')
+                .onSnapshot((snapshot) => {
+                    equipos = {};
+                    snapshot.forEach((doc) => {
+                        const data = doc.data();
+                        equipos[data.numero] = { id: doc.id, ...data };
+                    });
+                    actualizarUI();
+                    console.log('✅ Datos actualizados:', Object.keys(equipos).length, 'equipos activos');
+                }, (error) => {
+                    console.error('❌ Error en tiempo real:', error);
+                    mostrarNotificacion('Error al sincronizar datos: ' + error.message, 'error');
+                });
+        }
+
+        function actualizarUI() {
+            let countVerde = 0, countAmarillo = 0, countRojo = 0;
+            
+            for (let i = 1; i <= 43; i++) {
+                const btn = document.getElementById(`equipo-${i}`);
+                const equipo = equipos[i];
+                
+                if (equipo) {
+                    const colores = { verde: 'bg-green-500', amarillo: 'bg-yellow-500', rojo: 'bg-red-500' };
+                    btn.className = `${colores[equipo.estado]} hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all transform hover:scale-105 relative group`;
+                    btn.innerHTML = `
+                        <span class="text-3xl md:text-4xl">${i}</span>
+                        <span class="text-xs mt-1 truncate max-w-full px-1">${equipo.usuario}</span>
+                        <div class="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-70 rounded-lg flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                            <span class="text-2xl">👋</span>
+                        </div>
+                    `;
+                    
+                    if (equipo.estado === 'verde') countVerde++;
+                    if (equipo.estado === 'amarillo') countAmarillo++;
+                    if (equipo.estado === 'rojo') countRojo++;
+                } else {
+                    btn.className = 'bg-gray-700 hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all transform hover:scale-105';
+                    btn.innerHTML = `<span class="text-3xl md:text-4xl">${i}</span>`;
+                }
+            }
+            
+            document.getElementById('count-verde').textContent = countVerde;
+            document.getElementById('count-amarillo').textContent = countAmarillo;
+            document.getElementById('count-rojo').textContent = countRojo;
+        }
+
+        function abrirModal(numero) {
+            if (!db) { 
+                alert('⚠️ Firebase no está configurado. Configura las credenciales en el código.'); 
+                return; 
+            }
+            
+            selectedEquipo = numero;
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modal-content');
+            const equipo = equipos[numero];
+
+            if (equipo) {
+                const entrada = equipo.horaEntrada.toDate();
+                const duracion = calcularDuracion(entrada, new Date());
+                
+                content.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-4">Registrar Salida - Equipo ${numero}</h2>
+                    <div class="bg-gray-700 p-4 rounded mb-4">
+                        <p class="mb-2"><strong>Usuario:</strong> ${equipo.usuario}</p>
+                        <p class="mb-2"><strong>Estado:</strong> <span class="px-2 py-1 rounded ${getColorBadge(equipo.estado)}">${getEstadoTexto(equipo.estado)}</span></p>
+                        ${equipo.problema ? `<p class="mb-2"><strong>Problema:</strong> ${equipo.problema}</p>` : ''}
+                        <p class="text-sm text-gray-400 mt-3">⏰ Entrada: ${formatFecha(entrada)}</p>
+                        <p class="text-sm text-gray-400">⏱️ Duración: ${duracion}</p>
+                    </div>
+                    <button onclick="registrarSalida()" class="w-full bg-blue-500 hover:bg-blue-600 py-3 rounded mb-2 font-semibold">
+                        ✓ Confirmar Salida
+                    </button>
+                    <button onclick="cerrarModal()" class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">
+                        Cancelar
+                    </button>
+                `;
+            } else {
+                content.innerHTML = `
+                    <h2 class="text-2xl font-bold mb-4">Registrar Equipo ${numero}</h2>
+                    <div class="mb-4">
+                        <label class="block text-sm mb-2 font-semibold">Nombre del Usuario</label>
+                        <input type="text" id="userName" class="w-full bg-gray-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Ingresa tu nombre" autocomplete="off">
+                    </div>
+                    <div class="mb-4">
+                        <label class="block text-sm mb-3 font-semibold">Estado del Equipo</label>
+                        <div class="space-y-2">
+                            <button onclick="registrarEntrada('verde')" class="w-full bg-green-500 hover:bg-green-600 py-3 rounded font-semibold flex items-center justify-center gap-2">
+                                <span>✓</span> Funcionando 100%
+                            </button>
+                            <button onclick="mostrarReporte()" class="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded font-semibold flex items-center justify-center gap-2">
+                                <span>⚠</span> Tiene Fallas
+                            </button>
+                            <button onclick="registrarEntrada('rojo')" class="w-full bg-red-500 hover:bg-red-600 py-3 rounded font-semibold flex items-center justify-center gap-2">
+                                <span>✕</span> No Funciona
+                            </button>
+                        </div>
+                    </div>
+                    <div id="reporteSection" class="hidden mb-4">
+                        <label class="block text-sm mb-2 font-semibold">Describe el problema</label>
+                        <textarea id="reporteProblema" class="w-full bg-gray-700 rounded px-3 py-2 text-white focus:ring-2 focus:ring-yellow-500 outline-none" rows="3" placeholder="Ej: Micrófono con ruido"></textarea>
+                        <button onclick="registrarEntrada('amarillo')" class="w-full bg-yellow-500 hover:bg-yellow-600 py-2 rounded mt-2 font-semibold">
+                            Confirmar Reporte
+                        </button>
+                    </div>
+                    <button onclick="cerrarModal()" class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">
+                        Cancelar
+                    </button>
+                `;
+                setTimeout(() => document.getElementById('userName')?.focus(), 100);
+            }
+            
+            modal.classList.remove('hidden');
+        }
+
+        function mostrarReporte() {
+            const userName = document.getElementById('userName').value.trim();
+            if (!userName) {
+                alert('⚠️ Por favor ingresa tu nombre primero');
+                document.getElementById('userName').focus();
+                return;
+            }
+            document.getElementById('reporteSection').classList.remove('hidden');
+        }
+
+        async function registrarEntrada(estado) {
+            if (!db) return;
+            
+            const userName = document.getElementById('userName').value.trim();
+            const problema = document.getElementById('reporteProblema')?.value.trim() || null;
+            
+            if (!userName) {
+                alert('⚠️ Por favor ingresa tu nombre');
+                document.getElementById('userName').focus();
+                return;
+            }
+
+            try {
+                console.log('📝 Registrando entrada:', selectedEquipo, userName, estado);
+                
+                const existente = await db.collection('equipos')
+                    .where('numero', '==', selectedEquipo)
+                    .get();
+                
+                if (!existente.empty) {
+                    await existente.docs[0].ref.update({
+                        usuario: userName,
+                        estado: estado,
+                        problema: problema,
+                        horaEntrada: firebase.firestore.Timestamp.now()
+                    });
+                } else {
+                    await db.collection('equipos').add({
+                        numero: selectedEquipo,
+                        usuario: userName,
+                        estado: estado,
+                        problema: problema,
+                        horaEntrada: firebase.firestore.Timestamp.now()
+                    });
+                }
+                
+                cerrarModal();
+                mostrarNotificacion(`✓ Equipo ${selectedEquipo} registrado correctamente`, 'success');
+                console.log('✅ Entrada registrada exitosamente');
+            } catch (error) {
+                console.error('❌ Error al registrar:', error);
+                mostrarNotificacion('Error al registrar: ' + error.message, 'error');
+            }
+        }
+
+        async function registrarSalida() {
+            if (!db) return;
+            
+            const equipo = equipos[selectedEquipo];
+            if (!equipo) return;
+
+            try {
+                console.log('📝 Registrando salida:', selectedEquipo);
+                
+                await db.collection('historico').add({
+                    numero: equipo.numero,
+                    usuario: equipo.usuario,
+                    estado: equipo.estado,
+                    problema: equipo.problema || null,
+                    horaEntrada: equipo.horaEntrada,
+                    horaSalida: firebase.firestore.Timestamp.now(),
+                    fecha: new Date().toISOString().split('T')[0]
+                });
+                
+                await db.collection('equipos').doc(equipo.id).delete();
+                
+                cerrarModal();
+                mostrarNotificacion(`✓ Salida registrada - Equipo ${selectedEquipo}`, 'success');
+                console.log('✅ Salida registrada exitosamente');
+            } catch (error) {
+                console.error('❌ Error al registrar salida:', error);
+                mostrarNotificacion('Error al registrar salida: ' + error.message, 'error');
+            }
+        }
+
+        function cerrarModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        async function exportarExcel() {
+            if (!db) {
+                alert('⚠️ Firebase no configurado');
+                return;
+            }
+            
+            try {
+                const hoy = new Date().toISOString().split('T')[0];
+                
+                const historico = await db.collection('historico')
+                    .where('fecha', '==', hoy)
+                    .orderBy('horaEntrada', 'asc')
+                    .get();
+                
+                const activos = await db.collection('equipos')
+                    .orderBy('numero', 'asc')
+                    .get();
+
+                if (historico.empty && activos.empty) {
+                    alert('⚠️ No hay datos para exportar hoy');
+                    return;
+                }
+
+                let csv = 'Equipo,Usuario,Estado,Problema,Hora Entrada,Hora Salida,Duración (hrs)\n';
+                
+                historico.forEach((doc) => {
+                    const item = doc.data();
+                    const entrada = item.horaEntrada.toDate();
+                    const salida = item.horaSalida.toDate();
+                    const duracion = ((salida - entrada) / 3600000).toFixed(2);
+                    csv += `${item.numero},"${item.usuario}",${item.estado.toUpperCase()},"${item.problema || 'N/A'}",${formatFechaCSV(entrada)},${formatFechaCSV(salida)},${duracion}\n`;
+                });
+                
+                activos.forEach((doc) => {
+                    const item = doc.data();
+                    const entrada = item.horaEntrada.toDate();
+                    const duracion = ((new Date() - entrada) / 3600000).toFixed(2);
+                    csv += `${item.numero},"${item.usuario}",${item.estado.toUpperCase()},"${item.problema || 'N/A'}",${formatFechaCSV(entrada)},En uso,${duracion}\n`;
+                });
+
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = `Reporte_ANDON_${hoy}.csv`;
+                link.click();
+                
+                mostrarNotificacion('📥 Reporte descargado correctamente', 'success');
+            } catch (error) {
+                console.error('❌ Error al exportar:', error);
+                mostrarNotificacion('Error al exportar: ' + error.message, 'error');
+            }
+        }
+
+        function getEstadoTexto(estado) {
+            return { verde: 'FUNCIONANDO', amarillo: 'NECESITA REVISIÓN', rojo: 'NO FUNCIONAL' }[estado] || 'DESCONOCIDO';
+        }
+        
+        function getColorBadge(estado) {
+            return { verde: 'bg-green-500', amarillo: 'bg-yellow-500', rojo: 'bg-red-500' }[estado] || 'bg-gray-500';
+        }
+        
+        function formatFecha(fecha) {
+            return fecha.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+        }
+        
+        function formatFechaCSV(fecha) {
+            return fecha.toLocaleString('es-MX', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        }
+        
+        function calcularDuracion(inicio, fin) {
+            const diff = fin - inicio;
+            const horas = Math.floor(diff / 3600000);
+            const minutos = Math.floor((diff % 3600000) / 60000);
+            return `${horas}h ${minutos}m`;
+        }
+        
+        function mostrarNotificacion(mensaje, tipo) {
+            const colores = { success: 'bg-green-500', error: 'bg-red-500', warning: 'bg-yellow-500' };
+            const notif = document.createElement('div');
+            notif.className = `fixed top-4 right-4 ${colores[tipo]} text-white px-6 py-3 rounded-lg shadow-lg z-50 max-w-md`;
+            notif.textContent = mensaje;
+            document.body.appendChild(notif);
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                notif.style.transition = 'opacity 0.3s';
+                setTimeout(() => notif.remove(), 300);
+            }, 3000);
+        }
+
+        document.getElementById('modal').addEventListener('click', (e) => {
+            if (e.target.id === 'modal') cerrarModal();
+        });
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') cerrarModal();
+        });
+        
+        window.addEventListener('beforeunload', () => {
+            if (unsubscribeEquipos) unsubscribeEquipos();
+        });
+    </script>
+</body>
+</html>

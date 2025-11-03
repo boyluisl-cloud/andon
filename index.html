@@ -1,0 +1,1043 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema ANDON - CEDIS Puebla</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body class="bg-black text-white min-h-screen">
+    
+    <!-- PANTALLA DE LOGIN -->
+    <div id="pantalla-login" class="min-h-screen flex items-center justify-center p-4">
+        <div class="bg-gray-800 rounded-lg p-8 max-w-md w-full">
+            <div class="text-center mb-8">
+                <div class="text-6xl mb-4">📡</div>
+                <h1 class="text-3xl font-bold mb-2">SISTEMA ANDON</h1>
+                <p class="text-gray-400">CEDIS Puebla - VOZ & RF</p>
+            </div>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm mb-2">Email</label>
+                    <input type="email" id="login-email" class="w-full bg-gray-700 rounded px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="usuario@cedis.com">
+                </div>
+                <div>
+                    <label class="block text-sm mb-2">Contraseña</label>
+                    <input type="password" id="login-password" class="w-full bg-gray-700 rounded px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500" placeholder="••••••••">
+                </div>
+                <button onclick="iniciarSesion()" class="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded font-semibold">
+                    Iniciar Sesión
+                </button>
+                
+                <!-- Credenciales -->
+                <div class="mt-6 p-4 bg-gray-900 rounded text-xs">
+                    <div class="font-bold mb-2 text-center">👤 Usuarios del Sistema</div>
+                    <div class="space-y-2">
+                        <div class="border-l-4 border-purple-500 pl-2">
+                            <div class="font-semibold">👁️ Visualizador</div>
+                            <div class="text-gray-400">visualizador1@cedis.com / vista123</div>
+                        </div>
+                        <div class="border-l-4 border-green-500 pl-2">
+                            <div class="font-semibold">👤 Operador</div>
+                            <div class="text-gray-400">operador3@cedis.com / opera456</div>
+                        </div>
+                        <div class="border-l-4 border-blue-500 pl-2">
+                            <div class="font-semibold">👑 Administrador</div>
+                            <div class="text-gray-400">administrador2@cedis.com / admin789</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- APLICACIÓN PRINCIPAL -->
+    <div id="pantalla-app" class="hidden">
+        <!-- Header -->
+        <div class="bg-gray-900 border-b border-gray-700">
+            <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-4">
+                    <div class="text-3xl">📡</div>
+                    <div>
+                        <h1 class="text-xl font-bold">SISTEMA ANDON</h1>
+                        <p class="text-xs text-gray-400">CEDIS Puebla - VOZ & RF</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="text-right">
+                        <div class="text-sm font-semibold" id="user-name">Usuario</div>
+                        <div class="text-xs" id="user-role">Rol</div>
+                    </div>
+                    <button onclick="cerrarSesion()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded text-sm">
+                        Salir
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selector de Tipo de Equipo -->
+        <div class="bg-gray-900 border-b border-gray-700">
+            <div class="max-w-7xl mx-auto px-4 py-3">
+                <div class="flex gap-2 mb-3">
+                    <button onclick="cambiarTipo('voz')" id="tipo-voz" class="flex items-center gap-2 px-6 py-2 rounded bg-blue-600 text-white font-semibold">
+                        🎧 Equipos VOZ (43)
+                    </button>
+                    <button onclick="cambiarTipo('rf')" id="tipo-rf" class="flex items-center gap-2 px-6 py-2 rounded bg-gray-700 text-gray-300 font-semibold">
+                        📻 Equipos RF (35)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs de Navegación -->
+        <div class="bg-gray-900 border-b border-gray-700">
+            <div class="max-w-7xl mx-auto px-4">
+                <div class="flex gap-2">
+                    <button onclick="cambiarTab('monitor')" id="tab-monitor" class="px-4 py-3 font-semibold border-b-2 border-blue-500 text-blue-400 text-sm">
+                        📊 Monitor
+                    </button>
+                    <button onclick="cambiarTab('dashboard')" id="tab-dashboard" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-400 hover:text-white text-sm">
+                        📈 Dashboard
+                    </button>
+                    <button onclick="cambiarTab('alertas')" id="tab-alertas" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-400 hover:text-white text-sm relative">
+                        🔔 Alertas
+                        <span id="badge-alertas" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="p-4 md:p-8">
+            <!-- TAB: MONITOR -->
+            <div id="contenido-monitor" class="max-w-7xl mx-auto">
+                <div class="flex items-center justify-between mb-6 flex-wrap gap-4">
+                    <div>
+                        <h2 class="text-2xl font-bold mb-1" id="titulo-tipo">Equipos de VOZ</h2>
+                        <p class="text-sm text-gray-400">
+                            <span class="text-green-400">🟢 Sistema Activo</span>
+                        </p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="activarNotificaciones()" id="btn-notif" class="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded text-sm">
+                            🔔 Activar Alertas
+                        </button>
+                        <button onclick="mostrarModalReporte()" id="btn-exportar" class="hidden flex items-center gap-2 bg-green-600 hover:bg-green-700 px-4 py-2 rounded text-sm">
+                            📥 Exportar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Resumen de Estados -->
+                <div class="grid grid-cols-3 gap-4 mb-6">
+                    <div class="bg-green-500 bg-opacity-20 border-2 border-green-500 rounded-lg p-4 text-center">
+                        <div id="count-verde" class="text-3xl font-bold text-green-400">0</div>
+                        <div class="text-xs text-green-300">FUNCIONANDO</div>
+                    </div>
+                    <div class="bg-yellow-500 bg-opacity-20 border-2 border-yellow-500 rounded-lg p-4 text-center">
+                        <div id="count-amarillo" class="text-3xl font-bold text-yellow-400">0</div>
+                        <div class="text-xs text-yellow-300">NECESITA REVISIÓN</div>
+                    </div>
+                    <div class="bg-red-500 bg-opacity-20 border-2 border-red-500 rounded-lg p-4 text-center">
+                        <div id="count-rojo" class="text-3xl font-bold text-red-400">0</div>
+                        <div class="text-xs text-red-300">NO FUNCIONAL</div>
+                    </div>
+                </div>
+
+                <!-- Grid de Equipos -->
+                <div id="equipos-grid" class="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-9 gap-2"></div>
+            </div>
+
+            <!-- TAB: DASHBOARD -->
+            <div id="contenido-dashboard" class="hidden max-w-7xl mx-auto">
+                <h2 class="text-2xl font-bold mb-6">📈 Dashboard de Métricas</h2>
+                
+                <!-- Métricas -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <div class="text-gray-400 text-xs mb-1">Disponibilidad</div>
+                        <div id="metric-disponibilidad" class="text-2xl font-bold text-green-400">0%</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <div class="text-gray-400 text-xs mb-1">Registros Hoy</div>
+                        <div id="metric-registros" class="text-2xl font-bold text-blue-400">0</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <div class="text-gray-400 text-xs mb-1">Tiempo Promedio</div>
+                        <div id="metric-tiempo" class="text-2xl font-bold text-purple-400">0h</div>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-4">
+                        <div class="text-gray-400 text-xs mb-1">En Uso Ahora</div>
+                        <div id="metric-activos" class="text-2xl font-bold text-yellow-400">0</div>
+                    </div>
+                </div>
+
+                <!-- Gráficas -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <h3 class="text-lg font-bold mb-4">Estado de Equipos</h3>
+                        <canvas id="chart-estados"></canvas>
+                    </div>
+                    <div class="bg-gray-800 rounded-lg p-6">
+                        <h3 class="text-lg font-bold mb-4">Disponibilidad (7 días)</h3>
+                        <canvas id="chart-disponibilidad"></canvas>
+                    </div>
+                </div>
+
+                <!-- Comparativa VOZ vs RF -->
+                <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                    <h3 class="text-lg font-bold mb-4">📊 Comparativa VOZ vs RF</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-gray-700 rounded p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-semibold">🎧 Equipos VOZ</span>
+                                <span class="text-2xl font-bold" id="comp-voz-total">0</span>
+                            </div>
+                            <div class="text-xs text-gray-400">Total en uso</div>
+                        </div>
+                        <div class="bg-gray-700 rounded p-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="font-semibold">📻 Equipos RF</span>
+                                <span class="text-2xl font-bold" id="comp-rf-total">0</span>
+                            </div>
+                            <div class="text-xs text-gray-400">Total en uso</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Top Problemas -->
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <h3 class="text-lg font-bold mb-4">🔧 Equipos con Más Problemas</h3>
+                    <div id="top-problemas"></div>
+                </div>
+            </div>
+
+            <!-- TAB: ALERTAS -->
+            <div id="contenido-alertas" class="hidden max-w-7xl mx-auto">
+                <h2 class="text-2xl font-bold mb-6">🔔 Centro de Alertas</h2>
+                
+                <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                    <h3 class="text-lg font-bold mb-4">Configuración</h3>
+                    <div class="space-y-3">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="notif-critica" checked class="w-4 h-4">
+                            <span class="text-sm">🚨 Alerta crítica: 2 o más equipos en rojo</span>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="notif-rojo" checked class="w-4 h-4">
+                            <span class="text-sm">🔴 Alerta cuando equipo pasa a rojo</span>
+                        </label>
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="notif-amarillo" class="w-4 h-4">
+                            <span class="text-sm">🟡 Alerta cuando equipo necesita revisión</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-bold">Historial</h3>
+                        <button onclick="limpiarAlertas()" class="text-xs text-gray-400 hover:text-white">Limpiar</button>
+                    </div>
+                    <div id="historial-alertas" class="space-y-2 max-h-96 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Registro -->
+    <div id="modal" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <!-- Modal de Exportar -->
+    <div id="modal-reporte" class="hidden fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div class="bg-gray-800 rounded-lg p-6 max-w-md w-full">
+            <h2 class="text-xl font-bold mb-4">📥 Exportar Reporte</h2>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm mb-2">Tipo de Equipo</label>
+                    <select id="reporte-tipo" class="w-full bg-gray-700 rounded px-4 py-2">
+                        <option value="voz">🎧 Equipos VOZ</option>
+                        <option value="rf">📻 Equipos RF</option>
+                        <option value="todos">📡 Todos los Equipos</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm mb-2">Fecha Inicio</label>
+                    <input type="date" id="fecha-inicio" class="w-full bg-gray-700 rounded px-4 py-2">
+                </div>
+                <div>
+                    <label class="block text-sm mb-2">Fecha Fin</label>
+                    <input type="date" id="fecha-fin" class="w-full bg-gray-700 rounded px-4 py-2">
+                </div>
+                <button onclick="exportarExcel()" class="w-full bg-green-600 hover:bg-green-700 py-3 rounded font-semibold">
+                    Descargar Reporte
+                </button>
+                <button onclick="cerrarModalReporte()" class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ========================================
+        // CONFIGURACIÓN DE FIREBASE
+        // ========================================
+ // Import the functions you need from the SDKs you need
+//import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCAnqSIL7p4LhDozFpgVZBqsfAcqZE-PS8",
+  authDomain: "andon-9429b.firebaseapp.com",
+  projectId: "andon-9429b",
+  storageBucket: "andon-9429b.firebasestorage.app",
+  messagingSenderId: "428661387809",
+  appId: "1:428661387809:web:eb73a6fbeb2d581e5ca960"
+};
+
+        const USUARIOS_SISTEMA = {
+            'visualizador1@cedis.com': {
+                email: 'visualizador1@cedis.com',
+                password: 'vista123',
+                rol: 'visualizador',
+                nombre: 'Visualizador',
+                permisos: { verMonitor: true, verDashboard: true, verAlertas: true, registrarEquipos: false, descargarReporte: false }
+            },
+            'operador3@cedis.com': {
+                email: 'operador3@cedis.com',
+                password: 'opera456',
+                rol: 'operador',
+                nombre: 'Operador',
+                permisos: { verMonitor: true, verDashboard: true, verAlertas: true, registrarEquipos: true, descargarReporte: false }
+            },
+            'administrador2@cedis.com': {
+                email: 'administrador2@cedis.com',
+                password: 'admin789',
+                rol: 'administrador',
+                nombre: 'Administrador',
+                permisos: { verMonitor: true, verDashboard: true, verAlertas: true, registrarEquipos: true, descargarReporte: true }
+            }
+        };
+
+        let auth = null;
+        let db = null;
+        let usuarioActual = null;
+        let tipoActual = 'voz'; // 'voz' o 'rf'
+        let equipos = {};
+        let selectedEquipo = null;
+        let unsubscribeEquipos = null;
+        let alertasHistorial = JSON.parse(localStorage.getItem('alertas') || '[]');
+        let equiposRojosAnterior = { voz: 0, rf: 0 };
+        let chartEstados = null;
+        let chartDisponibilidad = null;
+
+        const audioAlerta = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBzGK0/LRfzEGHm7A7+OZTA0QVaru7bJiHAU7k9nxy3osBSV3x+/akEEKE2Cy6euoVRMJRp/g8b5sHwcxitPy0n4yBh5rwO/jl0wNEFWq7u2xYxwFO5PZ8cp6LQUmd8fv25BBChNf');
+
+        async function init() {
+            if (firebaseConfig.apiKey === 'TU_API_KEY_AQUI') {
+                alert('⚠️ Configura Firebase primero');
+                return;
+            }
+
+            firebase.initializeApp(firebaseConfig);
+            auth = firebase.auth();
+            db = firebase.firestore();
+
+            auth.onAuthStateChanged(async (user) => {
+                if (user) {
+                    await cargarUsuario(user);
+                    mostrarApp();
+                } else {
+                    mostrarLogin();
+                }
+            });
+
+            const hoy = new Date().toISOString().split('T')[0];
+            if (document.getElementById('fecha-inicio')) {
+                document.getElementById('fecha-inicio').value = hoy;
+                document.getElementById('fecha-fin').value = hoy;
+            }
+        }
+
+        async function cargarUsuario(user) {
+            const userInfo = USUARIOS_SISTEMA[user.email];
+            if (userInfo) {
+                usuarioActual = { uid: user.uid, ...userInfo };
+                document.getElementById('user-name').textContent = usuarioActual.nombre;
+                const roles = { visualizador: '👁️ Visualizador', operador: '👤 Operador', administrador: '👑 Administrador' };
+                document.getElementById('user-role').textContent = roles[usuarioActual.rol];
+                if (usuarioActual.permisos.descargarReporte) {
+                    document.getElementById('btn-exportar').classList.remove('hidden');
+                }
+            }
+        }
+
+        function mostrarLogin() {
+            document.getElementById('pantalla-login').classList.remove('hidden');
+            document.getElementById('pantalla-app').classList.add('hidden');
+        }
+
+        function mostrarApp() {
+            document.getElementById('pantalla-login').classList.add('hidden');
+            document.getElementById('pantalla-app').classList.remove('hidden');
+            cambiarTipo('voz');
+            verificarNotificaciones();
+        }
+
+        async function iniciarSesion() {
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+
+            if (!email || !password) {
+                alert('Completa todos los campos');
+                return;
+            }
+
+            const userInfo = USUARIOS_SISTEMA[email];
+            if (!userInfo) {
+                alert('❌ Usuario no autorizado');
+                return;
+            }
+
+            if (userInfo.password !== password) {
+                alert('❌ Contraseña incorrecta');
+                return;
+            }
+
+            try {
+                await auth.signInWithEmailAndPassword(email, password);
+            } catch (error) {
+                if (error.code === 'auth/user-not-found') {
+                    alert('⚠️ Usuario no registrado en Firebase.\nPor favor, crea este usuario en Firebase Console');
+                } else {
+                    alert('Error: ' + error.message);
+                }
+            }
+        }
+
+        async function cerrarSesion() {
+            if (confirm('¿Cerrar sesión?')) {
+                if (unsubscribeEquipos) unsubscribeEquipos();
+                await auth.signOut();
+            }
+        }
+
+        function cambiarTipo(tipo) {
+            if (unsubscribeEquipos) unsubscribeEquipos();
+            
+            tipoActual = tipo;
+            equipos = {};
+            
+            // Actualizar botones
+            document.getElementById('tipo-voz').className = tipo === 'voz' 
+                ? 'flex items-center gap-2 px-6 py-2 rounded bg-blue-600 text-white font-semibold'
+                : 'flex items-center gap-2 px-6 py-2 rounded bg-gray-700 text-gray-300 font-semibold';
+            
+            document.getElementById('tipo-rf').className = tipo === 'rf'
+                ? 'flex items-center gap-2 px-6 py-2 rounded bg-blue-600 text-white font-semibold'
+                : 'flex items-center gap-2 px-6 py-2 rounded bg-gray-700 text-gray-300 font-semibold';
+            
+            // Actualizar título
+            document.getElementById('titulo-tipo').textContent = tipo === 'voz' ? 'Equipos de VOZ' : 'Equipos RF';
+            
+            generarGrid();
+            suscribirCambios();
+        }
+
+        function generarGrid() {
+            const grid = document.getElementById('equipos-grid');
+            grid.innerHTML = '';
+            const total = tipoActual === 'voz' ? 43 : 35;
+            const puedeRegistrar = usuarioActual?.permisos.registrarEquipos;
+            
+            for (let i = 1; i <= total; i++) {
+                const btn = document.createElement('button');
+                btn.id = `equipo-${i}`;
+                btn.onclick = () => puedeRegistrar ? abrirModal(i) : mostrarSoloInfo(i);
+                btn.className = 'bg-gray-700 hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all transform hover:scale-105';
+                btn.innerHTML = `<span class="text-2xl">${i}</span>`;
+                grid.appendChild(btn);
+            }
+        }
+
+        function suscribirCambios() {
+            if (!db) return;
+            
+            const coleccion = tipoActual === 'voz' ? 'equipos_voz' : 'equipos_rf';
+            
+            unsubscribeEquipos = db.collection(coleccion).onSnapshot((snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added' || change.type === 'modified') {
+                        verificarAlerta(change.doc.data());
+                    }
+                });
+                
+                equipos = {};
+                snapshot.forEach((doc) => {
+                    const data = doc.data();
+                    equipos[data.numero] = { id: doc.id, ...data };
+                });
+                actualizarUI();
+                verificarAlertaCritica();
+            });
+        }
+
+        function verificarAlerta(equipo) {
+            const notifRojo = document.getElementById('notif-rojo')?.checked;
+            const notifAmarillo = document.getElementById('notif-amarillo')?.checked;
+            const tipoNombre = tipoActual === 'voz' ? 'VOZ' : 'RF';
+            
+            if (equipo.estado === 'rojo' && notifRojo) {
+                enviarAlerta(`🔴 EQUIPO ${tipoNombre} NO FUNCIONAL`, `Equipo ${tipoNombre}-${equipo.numero} - ${equipo.usuario}`, 'error');
+            } else if (equipo.estado === 'amarillo' && notifAmarillo) {
+                enviarAlerta(`🟡 EQUIPO ${tipoNombre} NECESITA REVISIÓN`, `Equipo ${tipoNombre}-${equipo.numero} - ${equipo.problema}`, 'warning');
+            }
+        }
+
+        function verificarAlertaCritica() {
+            const notifCritica = document.getElementById('notif-critica')?.checked;
+            if (!notifCritica) return;
+            
+            const equiposRojos = Object.values(equipos).filter(e => e.estado === 'rojo').length;
+            const tipoNombre = tipoActual === 'voz' ? 'VOZ' : 'RF';
+            
+            if (equiposRojos >= 2 && equiposRojos > equiposRojosAnterior[tipoActual]) {
+                enviarAlerta(`🚨 ALERTA CRÍTICA ${tipoNombre}`, `${equiposRojos} equipos ${tipoNombre} no funcionales`, 'error');
+                audioAlerta.play().catch(e => console.log('Audio bloqueado'));
+            }
+            equiposRojosAnterior[tipoActual] = equiposRojos;
+        }
+
+        function enviarAlerta(titulo, mensaje, tipo) {
+            const alerta = { titulo, mensaje, tipo, timestamp: new Date().toISOString() };
+            alertasHistorial.unshift(alerta);
+            if (alertasHistorial.length > 50) alertasHistorial.pop();
+            localStorage.setItem('alertas', JSON.stringify(alertasHistorial));
+            actualizarBadgeAlertas();
+            if (Notification.permission === 'granted') {
+                new Notification(titulo, { body: mensaje });
+            }
+            mostrarNotificacion(`${titulo}: ${mensaje}`, tipo);
+        }
+
+        function actualizarBadgeAlertas() {
+            const badge = document.getElementById('badge-alertas');
+            const count = alertasHistorial.length;
+            if (count > 0) {
+                badge.textContent = count > 99 ? '99+' : count;
+                badge.classList.remove('hidden');
+            }
+        }
+
+        function activarNotificaciones() {
+            if (!('Notification' in window)) {
+                alert('Tu navegador no soporta notificaciones');
+                return;
+            }
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    mostrarNotificacion('✅ Notificaciones activadas', 'success');
+                    document.getElementById('btn-notif').innerHTML = '✅ Alertas Activas';
+                }
+            });
+        }
+
+        function verificarNotificaciones() {
+            if (Notification.permission === 'granted') {
+                document.getElementById('btn-notif').innerHTML = '✅ Alertas Activas';
+            }
+        }
+
+        function cambiarTab(tab) {
+            ['monitor', 'dashboard', 'alertas'].forEach(t => {
+                document.getElementById(`tab-${t}`)?.classList.remove('border-blue-500', 'text-blue-400');
+                document.getElementById(`tab-${t}`)?.classList.add('border-transparent', 'text-gray-400');
+                document.getElementById(`contenido-${t}`)?.classList.add('hidden');
+            });
+            document.getElementById(`tab-${tab}`).classList.add('border-blue-500', 'text-blue-400');
+            document.getElementById(`tab-${tab}`).classList.remove('border-transparent', 'text-gray-400');
+            document.getElementById(`contenido-${tab}`).classList.remove('hidden');
+            
+            if (tab === 'dashboard') actualizarDashboard();
+            if (tab === 'alertas') mostrarHistorialAlertas();
+        }
+
+        function actualizarUI() {
+            let countVerde = 0, countAmarillo = 0, countRojo = 0;
+            const total = tipoActual === 'voz' ? 43 : 35;
+            
+            for (let i = 1; i <= total; i++) {
+                const btn = document.getElementById(`equipo-${i}`);
+                const equipo = equipos[i];
+                
+                if (equipo) {
+                    const colores = { verde: 'bg-green-500', amarillo: 'bg-yellow-500', rojo: 'bg-red-500' };
+                    btn.className = `${colores[equipo.estado]} hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all`;
+                    btn.innerHTML = `<span class="text-2xl">${i}</span><span class="text-xs mt-1 truncate px-1">${equipo.usuario}</span>`;
+                    if (equipo.estado === 'verde') countVerde++;
+                    if (equipo.estado === 'amarillo') countAmarillo++;
+                    if (equipo.estado === 'rojo') countRojo++;
+                } else {
+                    btn.className = 'bg-gray-700 hover:opacity-80 aspect-square rounded-lg flex flex-col items-center justify-center text-white font-bold transition-all';
+                    btn.innerHTML = `<span class="text-2xl">${i}</span>`;
+                }
+            }
+            
+            document.getElementById('count-verde').textContent = countVerde;
+            document.getElementById('count-amarillo').textContent = countAmarillo;
+            document.getElementById('count-rojo').textContent = countRojo;
+        }
+
+        function mostrarSoloInfo(numero) {
+            const equipo = equipos[numero];
+            const tipoNombre = tipoActual === 'voz' ? 'VOZ' : 'RF';
+            if (!equipo) {
+                mostrarNotificacion(`⚠️ Equipo ${tipoNombre}-${numero} disponible. No tienes permisos para registrar.`, 'warning');
+                return;
+            }
+            const entrada = equipo.horaEntrada.toDate();
+            alert(`📊 EQUIPO ${tipoNombre}-${numero}\n\n` +
+                  `Usuario: ${equipo.usuario}\n` +
+                  `Estado: ${getEstadoTexto(equipo.estado)}\n` +
+                  `Entrada: ${entrada.toLocaleString('es-MX')}\n` +
+                  `${equipo.problema ? 'Problema: ' + equipo.problema : ''}`);
+        }
+
+        function abrirModal(numero) {
+            if (!usuarioActual?.permisos.registrarEquipos) {
+                mostrarNotificacion('⚠️ No tienes permisos para registrar equipos', 'warning');
+                return;
+            }
+            
+            selectedEquipo = numero;
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modal-content');
+            const equipo = equipos[numero];
+            const tipoNombre = tipoActual === 'voz' ? 'VOZ' : 'RF';
+            const tipoIcon = tipoActual === 'voz' ? '🎧' : '📻';
+
+            if (equipo) {
+                const entrada = equipo.horaEntrada.toDate();
+                content.innerHTML = `
+                    <h2 class="text-xl font-bold mb-4">${tipoIcon} Equipo ${tipoNombre}-${numero} - Salida</h2>
+                    <div class="bg-gray-700 p-4 rounded mb-4 space-y-2 text-sm">
+                        <p><strong>Usuario:</strong> ${equipo.usuario}</p>
+                        <p><strong>Estado:</strong> ${getEstadoTexto(equipo.estado)}</p>
+                        ${equipo.problema ? `<p><strong>Problema:</strong> ${equipo.problema}</p>` : ''}
+                        <p><strong>Entrada:</strong> ${entrada.toLocaleString('es-MX')}</p>
+                    </div>
+                    <button onclick="registrarSalida()" class="w-full bg-blue-600 hover:bg-blue-700 py-2 rounded mb-2">Registrar Salida</button>
+                    <button onclick="cerrarModal()" class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded">Cancelar</button>
+                `;
+            } else {
+                content.innerHTML = `
+                    <h2 class="text-xl font-bold mb-4">${tipoIcon} Equipo ${tipoNombre}-${numero} - Entrada</h2>
+                    <input type="text" id="userName" placeholder="Tu nombre" class="w-full bg-gray-700 rounded px-4 py-2 mb-4">
+                    <div class="space-y-2 mb-4">
+                        <button onclick="registrarEntrada('verde')" class="w-full bg-green-600 hover:bg-green-700 py-2 rounded text-sm">✓ Funcionando</button>
+                        <button onclick="mostrarReporte()" class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded text-sm">⚠ Tiene Fallas</button>
+                        <button onclick="registrarEntrada('rojo')" class="w-full bg-red-600 hover:bg-red-700 py-2 rounded text-sm">✕ No Funciona</button>
+                    </div>
+                    <div id="reporteSection" class="hidden mb-4">
+                        <textarea id="reporteProblema" placeholder="Describe el problema..." class="w-full bg-gray-700 rounded px-4 py-2 mb-2" rows="2"></textarea>
+                        <button onclick="registrarEntrada('amarillo')" class="w-full bg-yellow-600 hover:bg-yellow-700 py-2 rounded text-sm">Confirmar</button>
+                    </div>
+                    <button onclick="cerrarModal()" class="w-full bg-gray-600 hover:bg-gray-700 py-2 rounded text-sm">Cancelar</button>
+                `;
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function mostrarReporte() {
+            const userName = document.getElementById('userName').value.trim();
+            if (!userName) {
+                alert('Ingresa tu nombre primero');
+                return;
+            }
+            document.getElementById('reporteSection').classList.remove('hidden');
+        }
+
+        async function registrarEntrada(estado) {
+            const userName = document.getElementById('userName').value.trim();
+            const problema = document.getElementById('reporteProblema')?.value.trim() || null;
+            
+            if (!userName) {
+                alert('Por favor ingresa tu nombre');
+                return;
+            }
+
+            try {
+                const coleccion = tipoActual === 'voz' ? 'equipos_voz' : 'equipos_rf';
+                const existente = await db.collection(coleccion).where('numero', '==', selectedEquipo).get();
+                
+                if (!existente.empty) {
+                    await existente.docs[0].ref.update({
+                        usuario: userName,
+                        estado: estado,
+                        problema: problema,
+                        horaEntrada: firebase.firestore.Timestamp.now()
+                    });
+                } else {
+                    await db.collection(coleccion).add({
+                        numero: selectedEquipo,
+                        usuario: userName,
+                        estado: estado,
+                        problema: problema,
+                        tipo: tipoActual,
+                        horaEntrada: firebase.firestore.Timestamp.now()
+                    });
+                }
+                
+                cerrarModal();
+                const tipoNombre = tipoActual === 'voz' ? 'VOZ' : 'RF';
+                mostrarNotificacion(`✓ Equipo ${tipoNombre}-${selectedEquipo} registrado`, 'success');
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarNotificacion('Error al registrar', 'error');
+            }
+        }
+
+        async function registrarSalida() {
+            const equipo = equipos[selectedEquipo];
+            if (!equipo) return;
+
+            try {
+                const coleccion = tipoActual === 'voz' ? 'equipos_voz' : 'equipos_rf';
+                const historicoCol = tipoActual === 'voz' ? 'historico_voz' : 'historico_rf';
+                
+                await db.collection(historicoCol).add({
+                    numero: equipo.numero,
+                    usuario: equipo.usuario,
+                    estado: equipo.estado,
+                    problema: equipo.problema || null,
+                    tipo: tipoActual,
+                    horaEntrada: equipo.horaEntrada,
+                    horaSalida: firebase.firestore.Timestamp.now(),
+                    fecha: new Date().toISOString().split('T')[0]
+                });
+                
+                await db.collection(coleccion).doc(equipo.id).delete();
+                cerrarModal();
+                const tipoNombre = tipoActual === 'voz' ? 'VOZ' : 'RF';
+                mostrarNotificacion(`✓ Salida registrada - Equipo ${tipoNombre}-${selectedEquipo}`, 'success');
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarNotificacion('Error al registrar salida', 'error');
+            }
+        }
+
+        function cerrarModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+
+        function mostrarModalReporte() {
+            if (!usuarioActual?.permisos.descargarReporte) {
+                mostrarNotificacion('⚠️ No tienes permisos para descargar reportes', 'warning');
+                return;
+            }
+            
+            const hoy = new Date().toISOString().split('T')[0];
+            document.getElementById('fecha-inicio').value = hoy;
+            document.getElementById('fecha-fin').value = hoy;
+            document.getElementById('reporte-tipo').value = tipoActual;
+            document.getElementById('modal-reporte').classList.remove('hidden');
+        }
+
+        function cerrarModalReporte() {
+            document.getElementById('modal-reporte').classList.add('hidden');
+        }
+
+        async function exportarExcel() {
+            if (!usuarioActual?.permisos.descargarReporte) {
+                mostrarNotificacion('⚠️ No tienes permisos para descargar reportes', 'warning');
+                return;
+            }
+            
+            if (!db) return;
+            
+            try {
+                const fechaInicio = document.getElementById('fecha-inicio').value;
+                const fechaFin = document.getElementById('fecha-fin').value;
+                const tipoReporte = document.getElementById('reporte-tipo').value;
+                
+                if (!fechaInicio || !fechaFin) {
+                    alert('⚠️ Selecciona ambas fechas');
+                    return;
+                }
+                
+                if (fechaInicio > fechaFin) {
+                    alert('⚠️ La fecha de inicio no puede ser mayor que la fecha fin');
+                    return;
+                }
+
+                let csv = 'Tipo,Equipo,Usuario,Estado,Problema,Hora Entrada,Hora Salida,Duración (hrs),Fecha\n';
+                let totalRegistros = 0;
+
+                // Función para procesar datos
+                const procesarDatos = async (coleccion, tipoNombre) => {
+                    const historico = await db.collection(coleccion)
+                        .where('fecha', '>=', fechaInicio)
+                        .where('fecha', '<=', fechaFin)
+                        .get();
+
+                    historico.forEach((doc) => {
+                        const item = doc.data();
+                        const entrada = item.horaEntrada.toDate();
+                        const salida = item.horaSalida.toDate();
+                        const duracion = ((salida - entrada) / 3600000).toFixed(2);
+                        csv += `${tipoNombre},${item.numero},"${item.usuario}",${item.estado.toUpperCase()},"${item.problema || 'N/A'}",${entrada.toLocaleString('es-MX')},${salida.toLocaleString('es-MX')},${duracion},${item.fecha}\n`;
+                        totalRegistros++;
+                    });
+                };
+
+                if (tipoReporte === 'voz' || tipoReporte === 'todos') {
+                    await procesarDatos('historico_voz', 'VOZ');
+                }
+                
+                if (tipoReporte === 'rf' || tipoReporte === 'todos') {
+                    await procesarDatos('historico_rf', 'RF');
+                }
+
+                if (totalRegistros === 0) {
+                    alert('⚠️ No hay datos en el rango de fechas seleccionado');
+                    return;
+                }
+
+                const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                const tipoNombre = tipoReporte === 'todos' ? 'TODOS' : tipoReporte.toUpperCase();
+                link.download = `Reporte_ANDON_${tipoNombre}_${fechaInicio}_${fechaFin}.csv`;
+                link.click();
+                
+                cerrarModalReporte();
+                mostrarNotificacion(`📥 Reporte descargado (${totalRegistros} registros)`, 'success');
+            } catch (error) {
+                console.error('Error:', error);
+                mostrarNotificacion('Error al exportar: ' + error.message, 'error');
+            }
+        }
+
+        async function actualizarDashboard() {
+            if (!db) return;
+            
+            try {
+                const hoy = new Date().toISOString().split('T')[0];
+                const coleccion = tipoActual === 'voz' ? 'equipos_voz' : 'equipos_rf';
+                const historicoCol = tipoActual === 'voz' ? 'historico_voz' : 'historico_rf';
+                
+                const historico = await db.collection(historicoCol).where('fecha', '==', hoy).get();
+                const activos = await db.collection(coleccion).get();
+                
+                const totalRegistros = historico.size + activos.size;
+                const equiposActivos = activos.size;
+                
+                let equiposVerde = 0;
+                activos.forEach(doc => {
+                    if (doc.data().estado === 'verde') equiposVerde++;
+                });
+                const disponibilidad = equiposActivos > 0 ? Math.round((equiposVerde / equiposActivos) * 100) : 100;
+                
+                let tiempoTotal = 0, contador = 0;
+                historico.forEach(doc => {
+                    const data = doc.data();
+                    tiempoTotal += (data.horaSalida.toDate() - data.horaEntrada.toDate()) / 3600000;
+                    contador++;
+                });
+                const tiempoPromedio = contador > 0 ? (tiempoTotal / contador).toFixed(1) : 0;
+                
+                document.getElementById('metric-disponibilidad').textContent = disponibilidad + '%';
+                document.getElementById('metric-registros').textContent = totalRegistros;
+                document.getElementById('metric-tiempo').textContent = tiempoPromedio + 'h';
+                document.getElementById('metric-activos').textContent = equiposActivos;
+                
+                // Comparativa
+                const vozActivos = await db.collection('equipos_voz').get();
+                const rfActivos = await db.collection('equipos_rf').get();
+                document.getElementById('comp-voz-total').textContent = vozActivos.size;
+                document.getElementById('comp-rf-total').textContent = rfActivos.size;
+                
+                actualizarGraficaEstados();
+                await actualizarGraficaDisponibilidad();
+                await actualizarTopProblemas();
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function actualizarGraficaEstados() {
+            const ctx = document.getElementById('chart-estados');
+            const countVerde = Object.values(equipos).filter(e => e.estado === 'verde').length;
+            const countAmarillo = Object.values(equipos).filter(e => e.estado === 'amarillo').length;
+            const countRojo = Object.values(equipos).filter(e => e.estado === 'rojo').length;
+            const total = tipoActual === 'voz' ? 43 : 35;
+            const disponibles = total - countVerde - countAmarillo - countRojo;
+            
+            if (chartEstados) chartEstados.destroy();
+            
+            chartEstados = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Funcionando', 'Necesita Revisión', 'No Funcional', 'Disponibles'],
+                    datasets: [{
+                        data: [countVerde, countAmarillo, countRojo, disponibles],
+                        backgroundColor: ['#22c55e', '#eab308', '#ef4444', '#6b7280']
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { labels: { color: '#fff' } } }
+                }
+            });
+        }
+
+        async function actualizarGraficaDisponibilidad() {
+            const labels = [];
+            const datos = [];
+            const historicoCol = tipoActual === 'voz' ? 'historico_voz' : 'historico_rf';
+            
+            for (let i = 6; i >= 0; i--) {
+                const fecha = new Date();
+                fecha.setDate(fecha.getDate() - i);
+                const fechaStr = fecha.toISOString().split('T')[0];
+                labels.push(fecha.toLocaleDateString('es-MX', { weekday: 'short' }));
+                
+                const snapshot = await db.collection(historicoCol).where('fecha', '==', fechaStr).get();
+                let verdes = 0, total = 0;
+                snapshot.forEach(doc => {
+                    total++;
+                    if (doc.data().estado === 'verde') verdes++;
+                });
+                datos.push(total > 0 ? Math.round((verdes / total) * 100) : 100);
+            }
+            
+            const ctx = document.getElementById('chart-disponibilidad');
+            if (chartDisponibilidad) chartDisponibilidad.destroy();
+            
+            chartDisponibilidad = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Disponibilidad %',
+                        data: datos,
+                        borderColor: '#22c55e',
+                        backgroundColor: 'rgba(34, 197, 94, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, max: 100, ticks: { color: '#fff' } },
+                        x: { ticks: { color: '#fff' } }
+                    },
+                    plugins: { legend: { labels: { color: '#fff' } } }
+                }
+            });
+        }
+
+        async function actualizarTopProblemas() {
+            const hace7dias = new Date();
+            hace7dias.setDate(hace7dias.getDate() - 7);
+            const fechaInicio = hace7dias.toISOString().split('T')[0];
+            const historicoCol = tipoActual === 'voz' ? 'historico_voz' : 'historico_rf';
+            
+            const snapshot = await db.collection(historicoCol)
+                .where('fecha', '>=', fechaInicio)
+                .where('estado', 'in', ['amarillo', 'rojo'])
+                .get();
+            
+            const problemasPorEquipo = {};
+            snapshot.forEach(doc => {
+                const numero = doc.data().numero;
+                problemasPorEquipo[numero] = (problemasPorEquipo[numero] || 0) + 1;
+            });
+            
+            const top = Object.entries(problemasPorEquipo).sort((a, b) => b[1] - a[1]).slice(0, 10);
+            const tipoNombre = tipoActual === 'voz' ? 'VOZ' : 'RF';
+            
+            const contenedor = document.getElementById('top-problemas');
+            if (top.length === 0) {
+                contenedor.innerHTML = '<p class="text-gray-400 text-sm">No hay problemas reportados</p>';
+            } else {
+                contenedor.innerHTML = top.map(([equipo, count]) => `
+                    <div class="flex items-center justify-between bg-gray-700 p-3 rounded mb-2">
+                        <span class="font-bold">Equipo ${tipoNombre}-${equipo}</span>
+                        <span class="text-red-400 text-sm">${count} problema${count > 1 ? 's' : ''}</span>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function mostrarHistorialAlertas() {
+            const contenedor = document.getElementById('historial-alertas');
+            if (alertasHistorial.length === 0) {
+                contenedor.innerHTML = '<p class="text-gray-400 text-center text-sm py-4">No hay alertas</p>';
+                return;
+            }
+            
+            contenedor.innerHTML = alertasHistorial.map(alerta => {
+                const fecha = new Date(alerta.timestamp);
+                const color = alerta.tipo === 'error' ? 'border-red-500' : 'border-yellow-500';
+                return `
+                    <div class="border-l-4 ${color} bg-gray-700 p-3 rounded text-sm">
+                        <div class="font-bold">${alerta.titulo}</div>
+                        <div class="text-gray-300 mt-1">${alerta.mensaje}</div>
+                        <div class="text-xs text-gray-500 mt-1">${fecha.toLocaleString('es-MX')}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function limpiarAlertas() {
+            if (confirm('¿Eliminar historial de alertas?')) {
+                alertasHistorial = [];
+                localStorage.setItem('alertas', '[]');
+                document.getElementById('badge-alertas').classList.add('hidden');
+                mostrarHistorialAlertas();
+                mostrarNotificacion('✅ Historial limpiado', 'success');
+            }
+        }
+
+        function getEstadoTexto(estado) {
+            return { verde: 'FUNCIONANDO', amarillo: 'NECESITA REVISIÓN', rojo: 'NO FUNCIONAL' }[estado];
+        }
+
+        function mostrarNotificacion(mensaje, tipo) {
+            const colores = { success: 'bg-green-500', error: 'bg-red-500', warning: 'bg-yellow-500' };
+            const notif = document.createElement('div');
+            notif.className = `fixed top-4 right-4 ${colores[tipo]} text-white px-6 py-3 rounded-lg shadow-lg z-50 text-sm max-w-md`;
+            notif.textContent = mensaje;
+            document.body.appendChild(notif);
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                notif.style.transition = 'opacity 0.3s';
+                setTimeout(() => notif.remove(), 300);
+            }, 3000);
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+        
+        document.getElementById('modal').addEventListener('click', (e) => {
+            if (e.target.id === 'modal') cerrarModal();
+        });
+        
+        document.getElementById('modal-reporte').addEventListener('click', (e) => {
+            if (e.target.id === 'modal-reporte') cerrarModalReporte();
+        });
+    </script>
+</body>
+</html>
